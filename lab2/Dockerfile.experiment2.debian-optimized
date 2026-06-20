@@ -1,0 +1,48 @@
+# ===== DOCKERFILE.experiment2.debian-optimized =====
+# ОПТИМІЗОВАНИЙ dockerfile на базі Debian (без multi-stage)
+# Порівняння з неоптимізованою версією
+
+FROM python:3.11-bookworm
+
+LABEL maintainer="student@university.edu"
+LABEL version="2.0-optimized"
+
+# Встановити невеликі runtime залежности
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
+
+# Встановити залежності для збірки Python пакетів
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    gcc && \
+    rm -rf /var/lib/apt/lists/*
+
+# Створити непривілейованого користувача
+RUN groupadd -r appuser && useradd -r -g appuser appuser
+
+WORKDIR /app
+
+# ДОБРЕ: встановлюємо залежності ПЕРЕД кодом
+# Це дозволяє кешувати шар залежностей
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# ДОБРЕ: копіюємо код ПІСЛЯ залежностей
+COPY app.py migrate_db.py ./
+
+# Дати права на файли
+RUN chown -R appuser:appuser /app
+
+USER appuser
+
+ENV PYTHONUNBUFFERED=1
+EXPOSE 8080
+
+HEALTHCHECK --interval=30s --timeout=3s --retries=3 \
+    CMD curl -f http://localhost:8080/health/alive || exit 1
+
+CMD ["python", "app.py", "--host", "0.0.0.0", "--port", "8080", \
+     "--db-host", "mariadb", "--db-user", "mywebapp", \
+     "--db-password", "mywebapp_pass", "--db-name", "mywebapp"]

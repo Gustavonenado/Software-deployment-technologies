@@ -1,0 +1,49 @@
+# ===== DOCKERFILE.go.multistage =====
+# Multi-stage build для Go застосунку
+# Демонструє як значно зменшити розмір образу
+
+# ===== STAGE 1: Builder =====
+FROM golang:1.21-alpine AS builder
+
+WORKDIR /build
+
+# Встановити залежности для збірки
+RUN apk add --no-cache git make
+
+# Скопіювати go.mod та go.sum (якщо існують)
+# Для цього прикладу використовуємо простої Go без залежностей
+# COPY go.mod go.sum ./
+# RUN go mod download
+
+# Скопіювати джерело коду
+COPY main.go .
+
+# Скомпілювати в статичний бінарник
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+    -ldflags="-w -s" \
+    -o /build/app .
+
+# ===== STAGE 2: Runtime (distroless) =====
+# Використовуємо distroless образ - мінімальний базовий образ
+# Містить тільки необхідне для запуску Go бінарника (libc, ca-certificates)
+FROM gcr.io/distroless/base-debian11:latest
+
+LABEL maintainer="student@university.edu"
+LABEL description="Go Task Tracker API - Distroless"
+LABEL version="1.0"
+
+WORKDIR /app
+
+# Скопіювати скомпільований бінарник з builder
+COPY --from=builder /build/app .
+
+# Встановити змінні оточення
+ENV PORT=8080
+
+EXPOSE 8080
+
+HEALTHCHECK --interval=30s --timeout=3s --retries=3 \
+    CMD ["/app", "--health"] || exit 1
+
+# Запустити го програму
+ENTRYPOINT ["/app"]

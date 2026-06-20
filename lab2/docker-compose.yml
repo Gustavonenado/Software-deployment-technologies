@@ -1,0 +1,163 @@
+version: '3.9'
+
+# ===== СЕРВІСИ =====
+services:
+  
+  # ===== MARIADB DATABASE =====
+  mariadb:
+    image: mariadb:11.4-latest
+    container_name: task-tracker-db
+    restart: unless-stopped
+    
+    # Змінні оточення
+    environment:
+      MYSQL_ROOT_PASSWORD: root_password_123
+      MYSQL_DATABASE: mywebapp
+      MYSQL_USER: mywebapp
+      MYSQL_PASSWORD: mywebapp_pass
+      MYSQL_INITDB_SKIP_TZINFO: 1
+      TZ: UTC
+    
+    # Портu (тільки для розробки)
+    ports:
+      - "3306:3306"
+    
+    # Томи для збереження даних
+    volumes:
+      # Основна БД - зберігається на хост-системі
+      - mariadb_data:/var/lib/mysql
+      
+      # Ініціалізаційні SQL скрипти (опціонально)
+      - ./init-db:/docker-entrypoint-initdb.d:ro
+    
+    # Мережа
+    networks:
+      - task-tracker-network
+    
+    # Health check
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "mywebapp", "-pmywebapp_pass"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    
+    # Логування
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+  
+  # ===== FLASK WEB APPLICATION =====
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: task-tracker-app
+    restart: unless-stopped
+    
+    # Залежність від БД
+    depends_on:
+      mariadb:
+        condition: service_healthy
+    
+    # Змінні оточення
+    environment:
+      APP_HOST: 0.0.0.0
+      APP_PORT: 8080
+      DB_HOST: mariadb
+      DB_USER: mywebapp
+      DB_PASSWORD: mywebapp_pass
+      DB_NAME: mywebapp
+      PYTHONUNBUFFERED: 1
+    
+    # Томи (монтування коду для розробки - опціонально)
+    volumes:
+      # Для продакшена - не потрібно
+      # Для розробки розкомментуйте:
+      # - ./app.py:/app/app.py:ro
+      # - ./migrate_db.py:/app/migrate_db.py:ro
+      
+      # Логи
+      - ./logs/app:/var/log/app
+    
+    # Мережа
+    networks:
+      - task-tracker-network
+    
+    # Портu (внутрішня мережа)
+    expose:
+      - "8080"
+    
+    # Health check
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health/alive"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    
+    # Логування
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+  
+  # ===== NGINX REVERSE PROXY =====
+  nginx:
+    image: nginx:latest-alpine
+    container_name: task-tracker-nginx
+    restart: unless-stopped
+    
+    # Залежність від web
+    depends_on:
+      - web
+    
+    # Конфігурація nginx
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./logs/nginx:/var/log/nginx
+    
+    # Мережа
+    networks:
+      - task-tracker-network
+    
+    # Портu (публічний доступ)
+    ports:
+      - "80:80"
+      - "443:443"
+    
+    # Health check
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/health/alive"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    
+    # Логування
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+# ===== МЕРЕЖИ =====
+networks:
+  task-tracker-network:
+    driver: bridge
+    name: task-tracker-network
+    driver_opts:
+      # Включити IPv6
+      com.docker.network.bridge.enable_ip_masquerade: "true"
+
+# ===== ТОМИ (для даних) =====
+volumes:
+  mariadb_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: "${MARIADB_DATA_PATH:-./.docker/mariadb}"

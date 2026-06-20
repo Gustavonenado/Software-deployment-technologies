@@ -1,0 +1,40 @@
+# ===== DOCKERFILE.experiment1.debian =====
+# НЕОПТИМІЗОВАНИЙ dockerfile на базі Debian
+# Порівняння: розмір образу і час збірки
+# Цей файл демонструє поганий підхід до написання Dockerfile
+
+FROM python:3.11-bookworm
+
+WORKDIR /app
+
+# ПОГАНИЙ: встановлюємо ВСЕ (включаючи build tools)
+RUN apt-get update && apt-get install -y \
+    curl \
+    wget \
+    git \
+    build-essential \
+    gcc \
+    g++ \
+    make \
+    vim \
+    nano \
+    htop \
+    ca-certificates
+
+# ПОГАНИЙ: копіюємо КОД перед залежностями
+# Тоді при кожній зміні коду - перебирається весь образ
+COPY app.py migrate_db.py ./
+COPY requirements.txt .
+
+# Встановлюємо залежності ПІСЛЯ коду
+RUN pip install --no-cache-dir -r requirements.txt
+
+# ПОГАНИЙ: не маємо непривілейованого користувача
+# Контейнер запускається від root
+
+ENV PYTHONUNBUFFERED=1
+EXPOSE 8080
+
+CMD ["python", "app.py", "--host", "0.0.0.0", "--port", "8080", \
+     "--db-host", "localhost", "--db-user", "root", \
+     "--db-password", "password", "--db-name", "mywebapp"]
