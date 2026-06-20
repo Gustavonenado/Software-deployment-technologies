@@ -1,0 +1,95 @@
+---
+- name: Install application dependencies
+  apt:
+    name:
+      - python3
+      - python3-pip
+      - nginx
+      - git
+    state: present
+
+- name: Create application directory
+  file:
+    path: /opt/mywebapp
+    state: directory
+    owner: app
+    group: app
+    mode: '0755'
+
+- name: Copy application files
+  copy:
+    src: "{{ item }}"
+    dest: /opt/mywebapp/
+    owner: app
+    group: app
+    mode: '0644'
+  loop:
+    - app.py
+    - migrate_db.py
+    - requirements.txt
+  ignore_errors: yes
+
+- name: Install Python requirements
+  pip:
+    requirements: /opt/mywebapp/requirements.txt
+    executable: pip3
+
+- name: Get DB server IP from hostvars
+  set_fact:
+    db_server_ip: "{{ hostvars[groups['db'][0]]['ansible_default_ipv4']['address'] }}"
+    db_server_host: "{{ groups['db'][0] }}"
+
+- name: Create systemd service file
+  template:
+    src: mywebapp.service.j2
+    dest: /etc/systemd/system/mywebapp.service
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Create nginx config
+  template:
+    src: nginx_config.j2
+    dest: /etc/nginx/sites-available/mywebapp
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Enable nginx site
+  file:
+    src: /etc/nginx/sites-available/mywebapp
+    dest: /etc/nginx/sites-enabled/mywebapp
+    state: link
+
+- name: Remove default nginx site
+  file:
+    path: /etc/nginx/sites-enabled/default
+    state: absent
+
+- name: Test nginx configuration
+  shell: /usr/sbin/nginx -t
+  register: nginx_test
+  changed_when: false
+
+- name: Start and enable services
+  systemd:
+    name: "{{ item }}"
+    state: started
+    enabled: yes
+    daemon_reload: yes
+  loop:
+    - mywebapp
+    - nginx
+
+- name: Wait for application to be ready
+  wait_for:
+    port: 8080
+    delay: 2
+    timeout: 30
+    host: 127.0.0.1
+
+- name: Wait for nginx to be ready
+  wait_for:
+    port: 80
+    delay: 2
+    timeout: 30

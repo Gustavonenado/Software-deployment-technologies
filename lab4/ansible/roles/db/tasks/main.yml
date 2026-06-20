@@ -1,0 +1,77 @@
+---
+- name: Install MariaDB
+  apt:
+    name:
+      - mariadb-server
+      - python3-pymysql
+    state: present
+
+- name: Start MariaDB service
+  systemd:
+    name: mariadb
+    state: started
+    enabled: yes
+
+- name: Wait for MariaDB to be ready
+  wait_for:
+    port: 3306
+    delay: 5
+    timeout: 30
+
+- name: Create application database
+  mysql_db:
+    name: mywebapp
+    state: present
+    login_user: root
+    login_password: ""
+    encoding: utf8mb4
+
+- name: Create database user
+  mysql_user:
+    name: mywebapp
+    password: "mywebapp_pass123"
+    host: "127.0.0.1"
+    priv: "mywebapp.*:ALL"
+    state: present
+    login_user: root
+    login_password: ""
+
+- name: Allow worker connection to DB
+  mysql_user:
+    name: mywebapp_remote
+    password: "mywebapp_pass123"
+    host: "192.168.122.%"
+    priv: "mywebapp.*:ALL"
+    state: present
+    login_user: root
+    login_password: ""
+  
+- name: Bind MariaDB to network interface
+  lineinfile:
+    path: /etc/mysql/mariadb.conf.d/50-server.cnf
+    regexp: '^bind-address'
+    line: 'bind-address            = 0.0.0.0'
+    state: present
+
+- name: Restart MariaDB after config change
+  systemd:
+    name: mariadb
+    state: restarted
+
+- name: Run database migrations
+  mysql_query:
+    login_user: root
+    login_password: ""
+    query: |
+      CREATE TABLE IF NOT EXISTS tasks (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          title VARCHAR(255) NOT NULL,
+          status VARCHAR(50) NOT NULL DEFAULT 'pending',
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          INDEX idx_status (status),
+          INDEX idx_created_at (created_at)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    db: mywebapp
+  register: migration_result
+  changed_when: "'error' not in migration_result.get('msg', '').lower()"
+  ignore_errors: yes

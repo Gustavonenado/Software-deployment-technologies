@@ -1,0 +1,25 @@
+[Unit]
+Description=MyWebApp Task Tracker Service
+After=network.target
+
+[Service]
+Type=simple
+User=app
+Group=app
+WorkingDirectory=/opt/mywebapp
+Environment="PYTHONUNBUFFERED=1"
+ExecStart=/usr/bin/python3 /opt/mywebapp/app.py \
+    --host 127.0.0.1 \
+    --port 8080 \
+    --db-host {{ db_server_ip }} \
+    --db-user mywebapp \
+    --db-password mywebapp_pass123 \
+    --db-name mywebapp
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=mywebapp
+
+[Install]
+WantedBy=multi-user.target

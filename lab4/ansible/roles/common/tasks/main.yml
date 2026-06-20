@@ -1,0 +1,89 @@
+---
+- name: Install basic packages
+  apt:
+    name:
+      - curl
+      - wget
+      - git
+      - vim
+      - htop
+      - net-tools
+      - sudo
+    state: present
+
+- name: Create student user
+  user:
+    name: student
+    shell: /bin/bash
+    groups: sudo
+    append: yes
+    password: "{{ 'student_password' | password_hash('sha512') }}"
+    createhome: yes
+
+- name: Create teacher user
+  user:
+    name: teacher
+    shell: /bin/bash
+    groups: sudo
+    append: yes
+    password: "{{ 'teacher_password' | password_hash('sha512') }}"
+    createhome: yes
+
+- name: Create operator user
+  user:
+    name: operator
+    shell: /bin/bash
+    createhome: yes
+    password: "{{ 'operator_password' | password_hash('sha512') }}"
+
+- name: Create ansible user
+  user:
+    name: ansible
+    shell: /bin/bash
+    groups: sudo
+    append: yes
+    password: "{{ 'ansible_password' | password_hash('sha512') }}"
+    createhome: yes
+    sudo: ALL=(ALL) NOPASSWD:ALL
+
+- name: Configure sudo for ansible user
+  lineinfile:
+    path: /etc/sudoers.d/ansible
+    line: "ansible ALL=(ALL) NOPASSWD:ALL"
+    create: yes
+    mode: '0440'
+
+- name: Configure operator sudoers
+  template:
+    src: sudoers_operator.j2
+    dest: /etc/sudoers.d/operator
+    mode: '0440'
+    owner: root
+    group: root
+
+- name: Disable SSH password authentication
+  lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: '^#?PasswordAuthentication'
+    line: 'PasswordAuthentication no'
+    state: present
+
+- name: Enable public key authentication
+  lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: '^#?PubkeyAuthentication'
+    line: 'PubkeyAuthentication yes'
+    state: present
+
+- name: Restart SSH service
+  systemd:
+    name: ssh
+    state: restarted
+    enabled: yes
+
+- name: Create app system user
+  user:
+    name: app
+    shell: /bin/false
+    system: yes
+    createhome: no

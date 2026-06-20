@@ -1,0 +1,52 @@
+#cloud-config
+
+hostname: worker
+fqdn: worker.local.lab
+
+package_upgrade: true
+
+packages:
+  - curl
+  - wget
+  - git
+  - vim
+  - python3
+  - python3-pip
+  - sudo
+
+users:
+  - name: ansible
+    groups: sudo, adm
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    shell: /bin/bash
+    lock_passwd: false
+    passwd: $6$rounds=656000$YOUR_HASH_HERE
+    ssh_authorized_keys:
+      - ssh-rsa AAAAB3... # Замінити на свій публічний ключ
+
+  - name: student
+    groups: sudo, adm
+    shell: /bin/bash
+    lock_passwd: false
+    passwd: $6$rounds=656000$student_hash
+    
+  - name: teacher
+    groups: sudo, adm
+    shell: /bin/bash
+    lock_passwd: false
+    passwd: $6$rounds=656000$teacher_hash
+
+  - name: operator
+    groups: sudo
+    shell: /bin/bash
+    lock_passwd: false
+    passwd: $6$rounds=656000$operator_hash
+
+  - name: app
+    system: true
+    shell: /bin/false
+
+ssh_pwauth: false
+disable_root: true
+
+final_message: "Worker VM ready! IP: \$HOSTNAME"

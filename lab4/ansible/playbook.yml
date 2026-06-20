@@ -1,0 +1,56 @@
+---
+- name: Deploy Task Tracker System
+  hosts: all
+  become: yes
+  gather_facts: yes
+
+  pre_tasks:
+    - name: Update package cache
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+      when: ansible_os_family == "Debian"
+
+  roles:
+    - role: common
+      tags: [common]
+
+- name: Configure DB Server
+  hosts: db
+  become: yes
+  gather_facts: yes
+  
+  roles:
+    - role: db
+      tags: [db]
+
+- name: Configure Worker Server
+  hosts: workers
+  become: yes
+  gather_facts: yes
+  
+  roles:
+    - role: worker
+      tags: [worker]
+  
+  post_tasks:
+    - name: Create gradebook file
+      file:
+        path: /home/student/gradebook
+        state: touch
+        owner: student
+        group: student
+        mode: '0644'
+    
+    - name: Write gradebook number
+      shell: echo "10" > /home/student/gradebook
+      
+    - name: Health check
+      uri:
+        url: "http://localhost/health/alive"
+        method: GET
+        status_code: 200
+      retries: 5
+      delay: 5
+      until: "result.status == 200 or result.status == 200"
+      ignore_errors: yes
